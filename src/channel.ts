@@ -178,9 +178,12 @@ async function handleInboundMessage(opts: {
     let messageBody: string;
     let senderId: string;
     let correlationId: string | undefined;
+    let agentId: string = "main"; // 默认智能体
 
     if (parsedPayload && typeof parsedPayload === "object") {
+      // Odoo 使用 'content' 字段，优先提取
       messageBody =
+        (parsedPayload.content as string) ??
         (parsedPayload.message as string) ??
         (parsedPayload.text as string) ??
         (parsedPayload.msg as string) ??
@@ -188,7 +191,9 @@ async function handleInboundMessage(opts: {
         (parsedPayload.body as string) ??
         text;
 
+      // 发送者信息：优先使用 author_name (Odoo 格式)
       senderId =
+        (parsedPayload.author_name as string) ??
         (parsedPayload.senderId as string) ??
         (parsedPayload.source as string) ??
         (parsedPayload.sender as string) ??
@@ -200,12 +205,25 @@ async function handleInboundMessage(opts: {
         (parsedPayload.correlationId as string) ??
         (parsedPayload.requestId as string) ??
         undefined;
+
+      // 支持 agentId 路由：从 payload 中提取 agentId，用于多智能体路由
+      if (parsedPayload.agentId && typeof parsedPayload.agentId === "string") {
+        agentId = parsedPayload.agentId;
+        log?.info?.(`MQTT: routing to agent ${agentId}`);
+      }
     } else {
       messageBody = text;
       senderId = topic.replace(/\//g, "-");
     }
 
+    // 确定 ChatType：从 payload 提取 is_group_chat 或 message_type
+    const isGroupChat = (parsedPayload?.is_group_chat === true) || 
+                        (parsedPayload?.message_type === 'discuss_group_chat') ||
+                        (parsedPayload?.chat_type === 'group');
+    const chatType = isGroupChat ? "group" : "direct";
+
     // Build the inbound context using OpenClaw's standard format
+    const chatSuffix = isGroupChat ? "g" : "p";
     const ctxPayload = runtime.channel.reply.finalizeInboundContext({
       Body: messageBody,
       RawBody: text,
@@ -213,9 +231,9 @@ async function handleInboundMessage(opts: {
       CommandAuthorized: true,
       From: `mqtt:${senderId}`,
       To: `mqtt:${accountId}`,
-      SessionKey: `agent:main:mqtt:${senderId}`,
+      SessionKey: `agent:${agentId}:mqtt:${senderId}:${chatSuffix}`, // 包含 chat_type 区分群聊/私聊
       AccountId: accountId,
-      ChatType: "direct",
+      ChatType: chatType, // 动态 ChatType: "group" 或 "direct"
       ConversationLabel: `mqtt:${senderId}`,
       SenderName: senderId,
       SenderId: senderId,
