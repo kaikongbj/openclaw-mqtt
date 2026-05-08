@@ -222,19 +222,29 @@ async function handleInboundMessage(opts: {
                         (parsedPayload?.chat_type === 'group');
     const chatType = isGroupChat ? "group" : "direct";
 
-    // Build the inbound context using OpenClaw's standard format
+    // 群聊使用 channelId，私聊使用 senderId
     const chatSuffix = isGroupChat ? "g" : "p";
+    let sessionKeyPart: string;
+    if (isGroupChat && parsedPayload?.channel_id) {
+      // 群聊：使用 channel_id 作为 SessionKey 的一部分，确保同一群聊共享上下文
+      sessionKeyPart = String(parsedPayload.channel_id);
+    } else {
+      // 私聊：使用 senderId
+      sessionKeyPart = senderId;
+    }
+
+    // Build the inbound context using OpenClaw's standard format
     const ctxPayload = runtime.channel.reply.finalizeInboundContext({
       Body: messageBody,
       RawBody: text,
       CommandBody: messageBody,
       CommandAuthorized: true,
-      From: `mqtt:${senderId}`,
-      To: `mqtt:${accountId}`,
-      SessionKey: `agent:${agentId}:mqtt:${senderId}:${chatSuffix}`, // 包含 chat_type 区分群聊/私聊
+      From: `odoo:${senderId}`,
+      To: `odoo:${accountId}`,
+      SessionKey: `agent:${agentId}:mqtt:${sessionKeyPart}:${chatSuffix}`,
       AccountId: accountId,
-      ChatType: chatType, // 动态 ChatType: "group" 或 "direct"
-      ConversationLabel: `mqtt:${senderId}`,
+      ChatType: chatType,
+      ConversationLabel: `odoo:${sessionKeyPart}`,
       SenderName: senderId,
       SenderId: senderId,
       Provider: "mqtt",
