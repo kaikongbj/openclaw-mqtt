@@ -206,9 +206,11 @@ async function handleInboundMessage(opts: {
         (parsedPayload.requestId as string) ??
         undefined;
 
-      // 支持 agentId 路由：从 payload 中提取 agentId，用于多智能体路由
-      if (parsedPayload.agentId && typeof parsedPayload.agentId === "string") {
-        agentId = parsedPayload.agentId;
+      // 支持 agentId 路由：从 payload 中提取 agentId 或 agent_id，用于多智能体路由
+      // 兼容两种字段命名：agentId (camelCase) 和 agent_id (snake_case)
+      const agentIdValue = parsedPayload.agentId ?? parsedPayload.agent_id;
+      if (agentIdValue && typeof agentIdValue === "string") {
+        agentId = agentIdValue;
         log?.info?.(`MQTT: routing to agent ${agentId}`);
       }
     } else {
